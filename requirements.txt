@@ -1,0 +1,24 @@
+# Core -- required.
+pillow>=10.0            # build with Raqm for correct Persian/Arabic shaping
+numpy>=1.24
+opencv-python-headless>=4.8   # inpainting and polygon masks
+
+# OCR, default tier: CPU, ~15 MB of ONNX models, ships inside the exe.
+rapidocr-onnxruntime>=1.3
+
+# Translation: CPU, offline after a ~100 MB language pack.
+argostranslate>=1.9
+
+# RTL fallback, used only when Pillow lacks Raqm. Cheap; keep them.
+arabic-reshaper>=3.0
+python-bidi>=0.4
+
+# Source-language detection when --from is 'auto'.
+langdetect>=1.0.9
+
+# Packaging (not needed to run).
+# pyinstaller>=6.0
+
+# OCR, optional GPU tier -- several GB, NVIDIA only. Install deliberately:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+#   pip install transformers accelerate
