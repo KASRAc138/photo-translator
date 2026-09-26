@@ -1,21 +1,4 @@
-"""Tests for font selection and complex-script layout.
-
-The Persian path has two ways to be wrong and only one way to be right, and
-both wrong ways *look* like a font problem:
-
-* Shaping applied twice -- once by ``arabic_reshaper`` and again by Raqm's
-  bidi pass -- reverses the text back to front while keeping the glyphs joined.
-  It reads as gibberish to a Persian speaker and as "working" to everyone else.
-* The wrong font entirely. The original tofu came from a font search that
-  returned whichever ``.ttf`` the filesystem yielded first; 85% of the fonts
-  installed on the machine this was written on have no Arabic glyphs at all.
-  Coverage has to be scored, not assumed -- and scored against the codepoints
-  that will actually be drawn, which under the fallback engine are presentation
-  forms (U+FE70-U+FEFF), not the base letters.
-
-``test_no_double_shaping``, ``test_coverage_rejects_font_without_the_script``
-and ``test_fallback_coverage_measures_presentation_forms`` pin those down.
-"""
+"""Tests for font selection and complex-script layout."""
 
 from __future__ import annotations
 
@@ -89,12 +72,7 @@ def _latin_only_font() -> str:
 
 
 def test_coverage_rejects_font_without_the_script():
-    """A Latin-only font must score ~0 for Persian and ~1 for German.
-
-    This is the check that stopped the original tofu: the previous font search
-    returned whichever .ttf the filesystem yielded first, and on this machine
-    85% of installed fonts have no Arabic glyphs whatsoever.
-    """
+    """A Latin-only font must score ~0 for Persian and ~1 for German."""
     latin = _latin_only_font()
     assert coverage(latin, "de") > 0.9
     assert coverage(latin, "fa") < 0.1
@@ -107,13 +85,7 @@ def test_pick_font_never_returns_an_unusable_font():
 
 
 def test_fallback_coverage_measures_presentation_forms():
-    """Without Raqm, coverage must score the *reshaped* codepoints.
-
-    Computed independently here rather than trusting the implementation: the
-    fallback draws presentation forms, so those are what must be checked. A
-    font can have the Arabic block and lack them, and scoring the base letters
-    would wave it through.
-    """
+    """Without Raqm, coverage must score the *reshaped* codepoints."""
     pytest.importorskip("arabic_reshaper")
     import arabic_reshaper
     from PIL import ImageFont
@@ -158,11 +130,7 @@ def test_prepare_reshapes_without_raqm(monkeypatch):
 
 
 def test_no_double_shaping():
-    """Reshaping on top of Raqm must not be what the pipeline does.
-
-    This is the failure that renders joined-but-reversed Persian -- the output
-    looks plausible unless you read the language.
-    """
+    """Reshaping on top of Raqm must not be what the pipeline does."""
     if not has_raqm():
         pytest.skip("Pillow built without Raqm")
     pytest.importorskip("arabic_reshaper")
@@ -217,12 +185,7 @@ if __name__ == "__main__":
 
 
 def test_argos_imports_without_stanza(monkeypatch):
-    """Argos must import when stanza/torch are absent, as they are in the exe.
-
-    Regression test for a real frozen-build crash: PyInstaller archived
-    ``stanza`` but not its ``torch`` dependency, so OCR worked and every
-    translation died on ``import argostranslate.translate``.
-    """
+    """Argos must import when stanza/torch are absent, as they are in the exe."""
     pytest.importorskip("argostranslate")
     import subprocess
 
@@ -249,13 +212,7 @@ def test_argos_imports_without_stanza(monkeypatch):
 
 
 def test_standin_replaces_stanza_even_when_it_is_installed():
-    """The stand-in is the default, not a fallback.
-
-    This reverses an earlier decision. Leaving real stanza in place meant the
-    source path downloaded a ~600 MB tokeniser on first use and ran different
-    code from the exe. Both now use the same lightweight splitter unless
-    PT_USE_STANZA=1 says otherwise.
-    """
+    """The stand-in is the default, not a fallback."""
     from pt.translate import _install_sbd_stubs
 
     _install_sbd_stubs()
@@ -270,12 +227,7 @@ def test_standin_replaces_stanza_even_when_it_is_installed():
 
 
 def test_layout_engine_matches_shaping():
-    """load_font must pin the engine that corresponds to prepare()'s output.
-
-    If prepare() has already reordered the text and the font is then laid out
-    by an engine that reorders again, Persian reads backwards while still
-    looking correctly joined -- the hardest variant to spot.
-    """
+    """load_font must pin the engine that corresponds to prepare()'s output."""
     from PIL import ImageFont
     from pt.textshape import has_raqm, load_font
 
@@ -285,12 +237,7 @@ def test_layout_engine_matches_shaping():
 
 
 def test_fallback_path_renders_identically_to_raqm():
-    """The no-Raqm path must produce the same picture as the Raqm path.
-
-    This is what makes the Windows warning harmless. Rendered with the BASIC
-    engine -- exactly what a Pillow without fribidi.dll uses -- the reshaped
-    text must match raw Unicode shaped by HarfBuzz.
-    """
+    """The no-Raqm path must produce the same picture as the Raqm path."""
     if not has_raqm():
         pytest.skip("no Raqm available to compare against")
     pytest.importorskip("arabic_reshaper")
@@ -327,12 +274,7 @@ def test_fallback_path_renders_identically_to_raqm():
 
 
 def test_untranslatable_tokens_pass_through():
-    """Codes, dates and numbers must never reach the translator.
-
-    'KW07' is a calendar-week label from a real slide. Sending it to a
-    German->Persian model wastes a pass and invites a hallucinated word where
-    the original was already correct.
-    """
+    """Codes, dates and numbers must never reach the translator."""
     from pt.translate import is_translatable
 
     for token in ("KW07", "15.03", "2015", " - ", "A", "04.05", "//", "3:"):
@@ -342,13 +284,7 @@ def test_untranslatable_tokens_pass_through():
 
 
 def test_missing_route_returns_originals_not_a_crash():
-    """No packs installed must degrade cleanly, not raise AttributeError.
-
-    Regression for the reported failure:
-        translation failed for 'KW07': 'NoneType' object has no attribute 'translate'
-    argostranslate's own translate() calls .translate() on a possibly-None
-    composite, so the route is now resolved explicitly and checked.
-    """
+    """No packs installed must degrade cleanly, not raise AttributeError."""
     from pt.translate import ArgosTranslator
     from pt.config import Config
 
@@ -372,19 +308,7 @@ def test_chain_for_returns_none_rather_than_raising():
 
 
 def test_stanza_standin_drives_argos_sentencizer():
-    """Argos's StanzaSentencizer must work against the stand-in.
-
-    Regression for the reported .exe failure:
-
-        Splitting sentences using SBD Model: (de) StanzaSentencizer
-        translation failed for 'Zwischenprasentation': stanza is not bundled
-
-    The first stub raised, on the assumption that Argos only selects
-    StanzaSentencizer when a pack ships a stanza model. The de->en pack *does*
-    ship one, so it is selected and called. The stand-in is therefore
-    functional, and this drives it through Argos's own class rather than
-    calling it directly.
-    """
+    """Argos's StanzaSentencizer must work against the stand-in."""
     pytest.importorskip("argostranslate")
     from pt.translate import _install_sbd_stubs
 
@@ -403,11 +327,7 @@ def test_stanza_standin_drives_argos_sentencizer():
 
 
 def test_standin_splits_non_latin_terminators():
-    """Persian, Urdu and Devanagari sentence enders must split too.
-
-    A splitter that only knows "." treats a whole Persian paragraph as one
-    sentence, which silently degrades translation quality rather than failing.
-    """
+    """Persian, Urdu and Devanagari sentence enders must split too."""
     from pt.translate import _split_sentences
 
     assert _split_sentences("یک جمله. جمله دوم؟ سوم است") == [
@@ -419,12 +339,7 @@ def test_standin_splits_non_latin_terminators():
 
 
 def test_standin_is_used_by_default_and_can_be_opted_out(tmp_path):
-    """Default to the stand-in even when real stanza exists; honour the opt-out.
-
-    Running from source with stanza installed would otherwise download a
-    ~600 MB tokeniser on the first translation, and take a different code path
-    from the exe -- the worst combination for reproducing a bug.
-    """
+    """Default to the stand-in even when real stanza exists; honour the opt-out."""
     import subprocess
 
     root = str(Path(__file__).resolve().parent.parent)
@@ -448,14 +363,7 @@ def test_standin_is_used_by_default_and_can_be_opted_out(tmp_path):
 
 
 def test_bundled_fonts_are_found_when_frozen(monkeypatch, tmp_path):
-    """Bundled resources must be located via _MEIPASS, not the exe directory.
-
-    ``app_dir()`` deliberately points at the executable so input/ and output/
-    land beside it. PyInstaller unpacks --add-data somewhere else entirely, so
-    a lookup based on app_dir() finds nothing and font selection silently falls
-    back to whatever the host machine happens to have installed -- on one test
-    build, a Japanese font for Latin text.
-    """
+    """Bundled resources must be located via _MEIPASS, not the exe directory."""
     from pt import config
 
     fake_meipass = tmp_path / "_MEI123"

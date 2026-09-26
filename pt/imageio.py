@@ -1,24 +1,4 @@
-"""The single image load path.
-
-This module exists for one reason: the rotation bug.
-
-A JPEG from a phone or a scanner carries an EXIF ``Orientation`` tag. Nothing
-applies it consistently:
-
-* ``PIL.Image.open()`` does **not** apply it -- you get raw sensor pixels.
-* ``cv2.imread()`` ignores EXIF entirely -- also raw sensor pixels.
-* Most OCR wrappers *do* normalise internally, so they see the upright image.
-
-If the OCR path and the render path each load the file themselves, they can
-disagree about what "the image" is, and the translated text lands 90 or 180
-degrees off. The fix is not a rotation correction somewhere -- it is removing
-the second load path entirely.
-
-Rule enforced here: **the file is decoded exactly once, orientation is applied
-exactly once, the tag is stripped, and every downstream consumer receives a
-view of that same array.** There is no other ``Image.open`` or ``cv2.imread``
-anywhere in this package, and ``tests/test_rotation.py`` fails if one appears.
-"""
+"""The single image load path."""
 
 from __future__ import annotations
 
@@ -50,13 +30,7 @@ _ORIENTATION_TAG = 0x0112
 
 @dataclass
 class LoadedImage:
-    """One decoded image, already upright, with its provenance attached.
-
-    ``pil`` and ``bgr`` are two views of identical pixel data. Handing both to
-    callers is deliberate -- OCR engines want BGR ndarrays, the renderer wants
-    a Pillow image -- but they are derived from a single decode so they cannot
-    drift apart.
-    """
+    """One decoded image, already upright, with its provenance attached."""
 
     path: Path
     pil: Image.Image           # RGB, upright, EXIF tag stripped
@@ -76,11 +50,7 @@ class LoadedImage:
 
     @property
     def bgr(self) -> np.ndarray:
-        """OpenCV-order ndarray of the *same* upright pixels.
-
-        Recomputed on access rather than cached, so a caller that mutates the
-        array it gets back cannot corrupt the canonical ``pil`` image.
-        """
+        """OpenCV-order ndarray of the *same* upright pixels."""
         return np.asarray(self.pil, dtype=np.uint8)[:, :, ::-1].copy()
 
     @property
@@ -111,14 +81,7 @@ def _read_orientation(img: Image.Image) -> int:
 
 
 def load(path: str | Path) -> LoadedImage:
-    """Decode ``path`` upright. The only entry point for reading an image.
-
-    ``ImageOps.exif_transpose`` handles all eight orientation values including
-    the four mirrored ones (2, 4, 5, 7), which a naive ``rotate(90 * k)``
-    misses -- those produce a flipped image whose OCR output is unreadable but
-    whose boxes still look plausible, which is a nastier failure than a plain
-    90-degree error.
-    """
+    """Decode ``path`` upright."""
     path = Path(path)
     with Image.open(path) as raw:
         raw.load()
@@ -151,12 +114,7 @@ def load_from_bytes(data: bytes, name: str = "<memory>") -> LoadedImage:
 
 
 def save(img: Image.Image, path: str | Path, quality: int = 95) -> Path:
-    """Write an image out with **no** orientation metadata.
-
-    Pillow does not add EXIF unless asked, but being explicit here documents
-    the invariant: files this app produces are upright on disk and carry no
-    tag that could re-rotate them.
-    """
+    """Write an image out with **no** orientation metadata."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     img = img.convert("RGB") if img.mode not in ("RGB", "L") else img

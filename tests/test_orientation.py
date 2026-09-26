@@ -1,19 +1,4 @@
-"""Regression tests for per-box text orientation.
-
-One page routinely carries body text at 0 degrees and a figure caption at 90 or
-270. The detector reports the caption's *text* correctly but hands back a tall,
-narrow quad with ``angle == 0.0``, so a renderer that trusts the geometry
-typesets the translation into a 40px column.
-
-The subtle failure this file exists to prevent is the one that shipped first:
-comparing the probe's confidence against the *detector's* confidence. RapidOCR
-rotates internally before recognising, so a vertical caption arrives with the
-right string at 0.99 confidence attached to horizontal geometry. Seeded as a
-baseline, that 0.99 is unbeatable and the probe concludes every box is upright
--- passing every test that only checks horizontal pages.
-
-``test_probe_baseline_is_not_detector_confidence`` pins that down specifically.
-"""
+"""Regression tests for per-box text orientation."""
 
 from __future__ import annotations
 
@@ -140,12 +125,7 @@ def test_horizontal_text_left_alone(detected):
 
 
 def test_probe_baseline_is_not_detector_confidence(detected):
-    """The bug that shipped first: an unbeatable baseline.
-
-    A vertical caption arrives from the detector with correct text at ~0.99.
-    Probing at 0 degrees on the same crop scores ~0.00. If the two are ever
-    compared, orientation detection silently stops working.
-    """
+    """The bug that shipped first: an unbeatable baseline."""
     image, boxes = detected
     engine = RapidOcrEngine(Config())._load()
 
@@ -174,12 +154,7 @@ def test_probe_baseline_is_not_detector_confidence(detected):
 
 
 def test_vertical_text_rendered_vertically(mixed_page, tmp_path):
-    """The rendered caption must occupy a tall column, not a wide strip.
-
-    Measured from the ink itself: a correctly rotated caption is far taller
-    than it is wide. Before the fix, the same region held two enormous
-    horizontal letters, which is wider than tall.
-    """
+    """The rendered caption must occupy a tall column, not a wide strip."""
     cfg = Config()
     cfg.output_dir = tmp_path
     cfg.source_lang = cfg.target_lang = "de"

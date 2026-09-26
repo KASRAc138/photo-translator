@@ -1,12 +1,4 @@
-"""Quad geometry.
-
-OCR engines in the PP-OCR family (RapidOCR included) return a **4-point
-polygon in reading order** -- top-left, top-right, bottom-right, bottom-left
-of the text as it reads, not of the image. Collapsing that to ``(x, y, w, h)``
-throws away the angle, and on a tilted scan it also transposes width and
-height. That is hypothesis #4 from the plan, and it is why nothing in this
-package passes rectangles around: the quad is the primitive.
-"""
+"""Quad geometry."""
 
 from __future__ import annotations
 
@@ -20,12 +12,7 @@ Point = tuple[float, float]
 
 @dataclass
 class TextBox:
-    """A detected piece of text and the quad it occupies.
-
-    ``quad`` is four ``(x, y)`` points in reading order, in **upright image
-    coordinates** -- the coordinate system of ``imageio.LoadedImage``. Because
-    there is only one load path, there is only one such system.
-    """
+    """A detected piece of text and the quad it occupies."""
 
     quad: list[Point]
     text: str
@@ -51,29 +38,13 @@ class TextBox:
 
     @property
     def centre(self) -> Point:
-        """Centroid. Rotation happens about *this*, never the image origin.
-
-        Rotating about the origin is hypothesis #3 -- it reads as a rotation
-        plus a large translation, which users describe as "weird" rather than
-        "upside down".
-        """
+        """Centroid."""
         a = self.array
         return (float(a[:, 0].mean()), float(a[:, 1].mean()))
 
     @property
     def angle_rad(self) -> float:
-        """Angle of the text baseline, in **image** coordinates (y grows down).
-
-        Measured from the top edge (p0 -> p1) averaged with the bottom edge
-        (p3 -> p2); averaging cancels the small perspective skew that makes a
-        photographed page's top and bottom edges disagree by a degree or two.
-
-        A positive value means the text descends to the right, i.e. it appears
-        rotated **clockwise** on screen. Callers that pass this to a rotation
-        API must negate it -- see :func:`degrees_for_pil`. That negation is
-        hypothesis #2, the sign flip, and it is deliberately confined to one
-        function so it can be got right once.
-        """
+        """Angle of the text baseline, in **image** coordinates (y grows down)."""
         (x0, y0), (x1, y1), (x2, y2), (x3, y3) = self.quad
         top = math.atan2(y1 - y0, x1 - x0)
         bottom = math.atan2(y2 - y3, x2 - x3)
@@ -128,26 +99,14 @@ class TextBox:
 
     @property
     def text_size(self) -> tuple[float, float]:
-        """(length, thickness) of the text run *along its own reading direction*.
-
-        For a vertical run the quad's ``width`` is the line thickness and its
-        ``height`` is how far the text runs -- the opposite of the horizontal
-        case. Typesetting against the raw quad dimensions is exactly what
-        crushed rotated captions into a sliver, so every layout decision uses
-        this instead.
-        """
+        """(length, thickness) of the text run *along its own reading direction*."""
         if self.is_vertical:
             return self.height, self.width
         return self.width, self.height
 
     @property
     def render_angle_deg(self) -> float:
-        """Total rotation for a horizontally-rendered tile of this box's text.
-
-        Composes two independent things: the quad's own skew (page tilt) and
-        the reading orientation (a deliberately rotated caption). Both end up
-        as one Pillow rotation about the tile centre, so they simply add.
-        """
+        """Total rotation for a horizontally-rendered tile of this box's text."""
         return degrees_for_pil(self.angle_rad) - self.orientation
 
     def is_degenerate(self, min_side: float = 3.0) -> bool:
@@ -166,29 +125,12 @@ class TextBox:
 
 
 def degrees_for_pil(angle_rad: float) -> float:
-    """Convert an image-space angle to the value Pillow's ``rotate`` wants.
-
-    Image coordinates are y-down; Pillow's ``Image.rotate(a)`` turns the image
-    **counter-clockwise** by ``a`` degrees as displayed. A box whose text
-    descends to the right (positive ``angle_rad``) appears rotated clockwise,
-    so the horizontally-rendered text tile must be turned clockwise to match --
-    which is ``rotate(-degrees)``.
-
-    Getting this backwards leans the text the wrong way by exactly ``-2*theta``,
-    which on a 3-degree scan skew looks like sloppy output rather than a bug,
-    and on a 90-degree box looks like the rotation failure it is.
-    """
+    """Convert an image-space angle to the value Pillow's ``rotate`` wants."""
     return -math.degrees(angle_rad)
 
 
 def sort_reading_order(boxes: list[TextBox], line_tol_ratio: float = 0.6) -> list[TextBox]:
-    """Order boxes top-to-bottom, then left-to-right within a line.
-
-    Detectors emit boxes in confidence or raster order, neither of which is
-    reading order. Grouping into lines first means a two-column page does not
-    interleave, provided the columns are separated vertically at all; full
-    column detection is out of scope and deliberately not attempted.
-    """
+    """Order boxes top-to-bottom, then left-to-right within a line."""
     if not boxes:
         return []
     typical = float(np.median([b.height for b in boxes])) or 1.0

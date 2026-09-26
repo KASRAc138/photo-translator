@@ -1,26 +1,4 @@
-"""Font selection and complex-script text layout.
-
-Persian and Arabic output is where naive implementations give themselves away:
-the letters come out disconnected and in reverse order. There are two ways to
-get it right, and which one is available depends on how Pillow was built.
-
-**Raqm (preferred).** Pillow compiled with libraqm delegates to HarfBuzz, which
-does real contextual shaping and bidi reordering from raw Unicode. Text is
-passed through untouched with ``direction="rtl"``. This is higher quality --
-it handles ligatures, kashida and mixed-direction runs that the fallback
-mangles -- and it is what ``features.check("raqm")`` is testing for.
-
-**arabic-reshaper + python-bidi (fallback).** Without Raqm, the text must be
-pre-converted to Arabic *presentation forms* (U+FE70-U+FEFF) and manually
-reversed. This is the trap that produced the tofu boxes during development:
-a font can contain Arabic (U+0600-U+06FF) and still lack every presentation
-form, so ``DejaVuSans`` renders raw Persian fine and reshaped Persian as
-solid squares. Font coverage therefore has to be checked against the codepoints
-that will *actually be drawn*, not against the source string.
-
-:func:`pick_font` does exactly that, which is why it needs to know the target
-language and the layout engine before it can choose.
-"""
+"""Font selection and complex-script text layout."""
 
 from __future__ import annotations
 
@@ -74,13 +52,7 @@ _FONT_DIRS = [
 
 @functools.lru_cache(maxsize=1)
 def has_raqm() -> bool:
-    """True when Pillow can shape complex scripts itself.
-
-    Frozen builds often lose this: PyInstaller collects the Pillow wheel but
-    not ``libraqm``/``fribidi``/``harfbuzz`` unless told to. ``build_portable.py``
-    checks for it and warns, because losing it silently downgrades RTL output
-    to the fallback path without any error.
-    """
+    """True when Pillow can shape complex scripts itself."""
     try:
         return bool(features.check("raqm"))
     except Exception:
@@ -92,11 +64,7 @@ def script_for(lang: str) -> str:
 
 
 def _drawable(font: ImageFont.FreeTypeFont, text: str) -> float:
-    """Fraction of ``text`` the font has real glyphs for.
-
-    Compares each glyph's raster against U+FFFF's, which no font defines, so
-    both fall back to .notdef and compare equal when the glyph is missing.
-    """
+    """Fraction of ``text`` the font has real glyphs for."""
     try:
         notdef = font.getmask("\uffff").getbbox()
     except Exception:
@@ -115,12 +83,7 @@ def _drawable(font: ImageFont.FreeTypeFont, text: str) -> float:
 
 
 def coverage(font_path: str, lang: str, raqm: bool | None = None) -> float:
-    """Score a font for ``lang``, testing the codepoints that will be drawn.
-
-    Without Raqm the fallback reshaper emits presentation forms, so those are
-    what get tested -- checking the base letters instead is precisely the
-    mistake that lets a tofu-rendering font look acceptable.
-    """
+    """Score a font for ``lang``, testing the codepoints that will be drawn."""
     raqm = has_raqm() if raqm is None else raqm
     sample = _SAMPLES.get(script_for(lang), _SAMPLES["latin"])
     if is_rtl(lang) and not raqm:
@@ -171,11 +134,7 @@ def _candidates() -> list[Path]:
 
 @functools.lru_cache(maxsize=8)
 def pick_font(lang: str, explicit: str | None = None) -> str:
-    """Best available font for ``lang``. Raises if nothing can draw the script.
-
-    Failing loudly beats rendering a page of squares: tofu output looks like a
-    shaping bug and sends you debugging the wrong module entirely.
-    """
+    """Best available font for ``lang``."""
     if explicit and Path(explicit).is_file():
         score = coverage(explicit, lang)
         if score < 0.9:
@@ -204,12 +163,7 @@ def pick_font(lang: str, explicit: str | None = None) -> str:
 
 
 def prepare(text: str, lang: str) -> str:
-    """Return the string to hand to Pillow, given the active layout engine.
-
-    With Raqm this is the identity -- HarfBuzz wants the logical order and
-    does the reordering itself. Pre-reshaping *and* letting Raqm reorder would
-    reverse the text twice and put it back in the wrong order.
-    """
+    """Return the string to hand to Pillow, given the active layout engine."""
     if not text or not is_rtl(lang) or has_raqm():
         return text
     try:
@@ -226,31 +180,14 @@ def prepare(text: str, lang: str) -> str:
 
 
 def draw_kwargs(lang: str) -> dict:
-    """Extra kwargs for ``ImageDraw.text``/``textlength``.
-
-    ``direction`` is only legal when Raqm is present; passing it otherwise
-    raises, which is why this is centralised rather than inlined at the call
-    sites.
-    """
+    """Extra kwargs for ``ImageDraw.text``/``textlength``."""
     if is_rtl(lang) and has_raqm():
         return {"direction": "rtl"}
     return {}
 
 
 def load_font(path: str, size: int) -> ImageFont.FreeTypeFont:
-    """Load at ``size`` with the layout engine that matches :func:`prepare`.
-
-    The two must agree or Persian comes out reversed. ``prepare`` reshapes and
-    bidi-reorders only when Raqm is absent; if the font were then loaded with a
-    layout engine that *does* reorder, the text would be reversed twice and
-    read backwards while still looking correctly joined.
-
-    So the engine is pinned explicitly in both directions -- RAQM when we are
-    passing raw Unicode, BASIC when we have already reordered by hand -- rather
-    than leaving Pillow to choose. Leaving it to choose is what made this
-    subtle: the default picks Raqm when available, which silently contradicts
-    the fallback path.
-    """
+    """Load at ``size`` with the layout engine that matches :func:`prepare`."""
     engine = ImageFont.Layout.RAQM if has_raqm() else ImageFont.Layout.BASIC
     try:
         return ImageFont.truetype(path, size, layout_engine=engine)

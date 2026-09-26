@@ -1,19 +1,4 @@
-"""Erase the original text, typeset the translation back into the same quad.
-
-This stage decides whether the output looks real or looks like a ransom note.
-Three things have to go right:
-
-1. **Erasure.** Inpaint the text region from surrounding pixels, or fill it
-   with the sampled background colour. Drawing over the top without erasing
-   leaves the source language showing through the gaps in the new glyphs.
-2. **Placement.** Rotate the rendered text about the quad's centre, by the
-   negated image-space angle. Both halves of that sentence are load-bearing;
-   see :func:`geometry.degrees_for_pil`.
-3. **Shaping.** Persian and Arabic need contextual glyph shaping and bidi
-   reordering *before* they are drawn. Skipping it -- which most naive
-   implementations do -- produces disconnected letters in reverse order. It is
-   the single most recognisable sign that nobody tested the RTL path.
-"""
+"""Erase the original text, typeset the translation back into the same quad."""
 
 from __future__ import annotations
 
@@ -36,14 +21,7 @@ log = logging.getLogger("pt.render")
 
 
 def sample_colours(rgb: np.ndarray, box: TextBox) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
-    """Return (ink, paper) RGB estimated from inside the box.
-
-    Uses luminance percentiles rather than k-means: text is a minority of dark
-    (or light) pixels against a dominant background, so the 15th and 85th
-    percentiles separate them reliably and cost nothing. Which end is ink is
-    decided by which is further from the median -- that keeps light-on-dark
-    text working, which a hardcoded "ink is darker" assumption breaks.
-    """
+    """Return (ink, paper) RGB estimated from inside the box."""
     x0, y0, x1, y1 = box.bounds
     h, w = rgb.shape[:2]
     x0, y0 = max(0, x0), max(0, y0)
@@ -79,12 +57,7 @@ def sample_colours(rgb: np.ndarray, box: TextBox) -> tuple[tuple[int, int, int],
 
 
 def build_mask(shape: tuple[int, int], boxes: list[TextBox], pad: float = 2.0) -> np.ndarray:
-    """White-on-black mask covering every text quad, slightly grown.
-
-    The padding matters: detectors crop tight to the glyphs, and antialiased
-    edge pixels just outside the quad survive erasure and read as a grey halo
-    around where the old text was.
-    """
+    """White-on-black mask covering every text quad, slightly grown."""
     import cv2
 
     mask = np.zeros(shape[:2], dtype=np.uint8)
@@ -124,12 +97,7 @@ def erase(image_rgb: np.ndarray, boxes: list[TextBox], cfg: Config) -> np.ndarra
 
 def _wrap(draw: ImageDraw.ImageDraw, text: str, font, max_width: float,
           kw: dict | None = None) -> list[str]:
-    """Greedy word wrap against measured widths, not character counts.
-
-    Measured, because a Persian word and an English word of the same character
-    count differ in width by a factor of two, and because ``kw`` may carry
-    ``direction="rtl"`` -- shaped text is not the same width as unshaped.
-    """
+    """Greedy word wrap against measured widths, not character counts."""
     kw = kw or {}
     words = text.split()
     if not words:
@@ -154,15 +122,7 @@ def fit_text(
     min_scale: float = 0.45,
     kw: dict | None = None,
 ) -> tuple[ImageFont.FreeTypeFont, list[str], int]:
-    """Largest font size at which ``text`` fits the box, with wrapping.
-
-    Translations run longer than their source -- German to English is roughly
-    +10%, English to Persian more -- so the box is almost always too small at
-    the original size. Shrinking to ``min_scale`` of the box height and then
-    accepting a slight overflow keeps the result readable; refusing to shrink
-    would clip words, and shrinking without limit would produce text nobody
-    can read.
-    """
+    """Largest font size at which ``text`` fits the box, with wrapping."""
     kw = kw or {}
     probe = Image.new("RGB", (8, 8))
     draw = ImageDraw.Draw(probe)
@@ -203,14 +163,7 @@ def draw_box(
     ink: tuple[int, int, int],
     cfg: Config,
 ) -> None:
-    """Render ``text`` into ``box`` on ``canvas``, respecting the box angle.
-
-    The tile is rendered horizontally at the box's un-rotated dimensions, then
-    rotated and pasted at the centroid. Rendering horizontally first is what
-    lets the text wrap and centre correctly -- doing it in rotated space means
-    every measurement has to account for the angle, and that is where sign
-    errors breed.
-    """
+    """Render ``text`` into ``box`` on ``canvas``, respecting the box angle."""
     if not text.strip():
         return
 
@@ -265,10 +218,8 @@ def render(image: LoadedImage, boxes: list[TextBox], cfg: Config) -> Image.Image
     # a font that would render the page as squares.
     font_path = pick_font(cfg.target_lang, cfg.font_path)
     if is_rtl(cfg.target_lang) and not has_raqm():
-        # Not a problem, and worth saying so plainly: this path is verified to
-        # produce identical output to the Raqm one. On Windows, Pillow ships a
-        # Raqm that needs fribidi.dll present to activate, so this branch is the
-        # normal case there rather than a degraded one.
+        # same output as Raqm; this is the normal path on Windows
+        # (Pillow's Raqm needs fribidi.dll)
         log.debug("Pillow has no Raqm; using the arabic-reshaper path for RTL layout")
 
     rgb = image.rgb

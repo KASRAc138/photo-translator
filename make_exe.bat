@@ -13,7 +13,7 @@ python -m pip install --upgrade pip >nul
 python -m pip install -r requirements.txt pyinstaller || goto :fail
 
 REM Raqm needs fribidi.dll on Windows to activate. Without it the app falls back
-REM to arabic-reshaper, which is verified to render identically -- so this is a
+REM to arabic-reshaper, which renders the same -- so this is a
 REM note, not a failure.
 python build_portable.py --onefile || goto :fail
 

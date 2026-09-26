@@ -1,19 +1,4 @@
-"""Regression tests for the rotation bug.
-
-These are written to fail against the *old* shape of the code, not just to
-pass against the new one. Specifically:
-
-* ``test_exif_orientations_converge`` fails whenever the load path stops
-  normalising orientation, and ``test_naive_load_actually_differs`` proves the
-  test has teeth by showing the naive path disagrees on the same four files.
-* ``test_no_second_load_path`` fails the moment anyone adds an ``Image.open``
-  or ``cv2.imread`` outside ``imageio.py`` -- which is how the bug would come
-  back.
-* ``test_rotation_sign`` pins the sign of the angle conversion, so a flip
-  cannot slip through as "text leans slightly wrong".
-
-Run with:  python -m pytest tests/ -v      (or: python tests/test_rotation.py)
-"""
+"""Regression tests for the rotation bug."""
 
 from __future__ import annotations
 
@@ -52,10 +37,7 @@ _INVERSE = {
 
 
 def make_page(width: int = 900, height: int = 420) -> Image.Image:
-    """A synthetic scan: dark text on off-white paper, asymmetric on both axes.
-
-    Asymmetry is the point. A symmetric test page passes a 180-degree bug.
-    """
+    """A synthetic scan: dark text on off-white paper, asymmetric on both axes."""
     img = Image.new("RGB", (width, height), (247, 244, 236))
     draw = ImageDraw.Draw(img)
     font_path = pick_font("de")
@@ -108,12 +90,7 @@ def test_exif_orientations_converge(pages):
 
 
 def test_naive_load_actually_differs(pages):
-    """Proves the previous test is not vacuous.
-
-    The naive path -- plain ``Image.open``, which is what ``cv2.imread`` also
-    effectively does -- returns genuinely different pixels for the same four
-    files. That difference is the bug.
-    """
+    """Proves the previous test is not vacuous."""
     _, files = pages
     shapes = set()
     for path in files.values():
@@ -136,11 +113,7 @@ def test_orientation_tag_stripped(pages, tmp_path):
 
 
 def test_pipeline_output_identical_across_orientations(pages, tmp_path):
-    """The whole pipeline, end to end, is orientation-invariant.
-
-    Identity translation isolates the geometry: any difference between the
-    four outputs is placement, not wording.
-    """
+    """The whole pipeline, end to end, is orientation-invariant."""
     _, files = pages
     outputs = {}
     for orientation, path in files.items():
@@ -167,17 +140,12 @@ def test_pipeline_output_identical_across_orientations(pages, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# The three runner-up hypotheses
+# other rotation cases
 # ---------------------------------------------------------------------------
 
 
 def test_rotation_sign():
-    """A box whose text descends to the right must rotate clockwise.
-
-    Pinning this catches the y-down/y-up sign flip, whose signature is text
-    leaning wrong by exactly -2*theta -- subtle enough at small angles to be
-    mistaken for sloppy rendering rather than a bug.
-    """
+    """A box whose text descends to the right must rotate clockwise."""
     theta = math.radians(12.0)
     dx, dy = 200 * math.cos(theta), 200 * math.sin(theta)
     box = TextBox([(100, 100), (100 + dx, 100 + dy),
@@ -197,11 +165,7 @@ def test_rotation_origin_is_box_centre():
 
 
 def test_quad_not_collapsed_to_rectangle():
-    """A tilted quad keeps its angle and its true width and height.
-
-    Treating the four points as an axis-aligned rectangle -- the hypothesis-4
-    failure -- would report width 210 here instead of ~204, and angle 0.
-    """
+    """A tilted quad keeps its angle and its true width and height."""
     theta = math.radians(20.0)
     w, h = 200.0, 50.0
     ux, uy = math.cos(theta), math.sin(theta)
@@ -228,12 +192,7 @@ def test_quad_not_collapsed_to_rectangle():
 
 
 def test_no_second_load_path():
-    """Only imageio.py may decode an image.
-
-    This is the test that keeps the fix permanent. The original bug was two
-    code paths disagreeing about what "the image" is; the fix deleted the
-    second one, and this fails if someone adds it back.
-    """
+    """Only imageio.py may decode an image."""
     package = Path(__file__).resolve().parent.parent / "pt"
     offenders = []
     pattern = re.compile(r"\b(Image\.open|cv2\.imread|imageio\.imread|plt\.imread)\b")

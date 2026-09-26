@@ -1,39 +1,4 @@
-"""Translation, pluggable, offline by default.
-
-Argos Translate is the default: MIT/CC0, built on CTranslate2, runs on CPU,
-and is **fully offline once the language pack is installed**. No LLM server,
-no API key, no network at translate time. Packs are ~100 MB per direction and
-download once.
-
-That matters for the stated goal -- a normal person should not have to install
-Ollama to translate a photo. Ollama stays where it already earns its keep, in
-the knowledge base, where a general model is running for other reasons anyway.
-
-The interface is the same shape as the OCR one, so a cloud backend (DeepL,
-Google) can be added later behind one env var without touching the pipeline.
-
-**Pivoting.** Argos has no direct de->fa pack. It does have de->en and en->fa,
-so :func:`ensure_packages` installs the pivot pair when no direct pack exists.
-Verified against the live package index: of the 100 published packs, en is the
-hub and almost nothing connects directly to anything else.
-
-Argos *can* compose those two hops itself -- ``get_installed_languages`` walks
-the language graph building ``CompositeTranslation`` objects -- but relying on
-that produced this in the field::
-
-    translation failed for 'KW07': 'NoneType' object has no attribute 'translate'
-
-``translate.translate()`` calls ``from_lang.get_translation(to_lang)`` and then
-``.translate()`` on the result without checking it for None, so a missing
-composite surfaces as an AttributeError rather than anything diagnosable. The
-transitive-closure loop that builds those composites also mutates the list it
-is iterating over, and its behaviour varies between argos versions.
-
-So :func:`chain_for` builds the hops explicitly here instead: try direct, then
-source->en->target, and return None when neither exists. One dependency on a
-fragile third-party loop removed, and a missing pack now produces one clear
-sentence instead of an AttributeError per line of text.
-"""
+"""Translation, pluggable, offline by default."""
 
 from __future__ import annotations
 
@@ -80,11 +45,7 @@ class _StubDoc:
 
 
 class _StubPipeline:
-    """Stands in for ``stanza.Pipeline`` with the surface Argos actually uses.
-
-    ``StanzaSentencizer`` needs exactly this: construct with keyword arguments,
-    call with a string, read ``.sentences[].text``. Nothing else is touched.
-    """
+    """Stands in for ``stanza.Pipeline`` with the surface Argos actually uses."""
 
     def __init__(self, *_args, **_kwargs):
         pass
@@ -94,44 +55,7 @@ class _StubPipeline:
 
 
 def _install_sbd_stubs() -> None:
-    """Let argostranslate import and run without stanza, so the exe stays small.
-
-    ``argostranslate.sbd`` does ``import stanza`` unconditionally at module
-    level, and stanza pulls in **torch**. Bundling torch to satisfy a sentence
-    splitter would take the build from ~180 MB to well over a gigabyte.
-
-    Two real failures shaped this, in order:
-
-    1. Excluding torch from the PyInstaller build produced an exe where OCR
-       worked and every translation died on ``import argostranslate.translate``,
-       because ``stanza`` was in the archive and its dependency was not.
-    2. A stub whose ``Pipeline`` *raised* then produced::
-
-           Splitting sentences using SBD Model: (de) StanzaSentencizer
-           translation failed for 'Zwischenprasentation': stanza is not bundled
-
-       The assumption behind that stub -- that Argos only reaches for stanza
-       when a pack ships a stanza model, and otherwise uses MiniSBD -- was
-       wrong in the direction that matters: the de->en pack *does* ship one, so
-       ``PackageTranslation`` selects ``StanzaSentencizer`` and calls it.
-
-    So the stub is **functional**, not a tripwire. Sentence splitting for OCR
-    output -- usually a single line, often a single word -- does not need a
-    neural tokeniser; a regex over sentence terminators is sufficient and
-    cannot fail offline.
-
-    Forcing ``ARGOS_CHUNK_TYPE=MINISBD`` was the other option and was rejected:
-    ``MiniSBDSentencizer`` downloads its model when the pack does not ship one,
-    which would break the offline promise the moment someone translates a
-    language whose pack bundles stanza instead.
-
-    The stand-in is installed **by default, even when real stanza is present**.
-    That is deliberate. A developer running from source has stanza and torch in
-    the venv, and the first translation then downloads a ~600 MB tokeniser from
-    HuggingFace -- a surprise network dependency, and a different code path from
-    the exe, which is the worst combination for reproducing a bug. Set
-    ``PT_USE_STANZA=1`` to opt back into the real thing.
-    """
+    """Let argostranslate import and run without stanza, so the exe stays small."""
     import os
     if os.environ.get("PT_USE_STANZA", "").strip().lower() in ("1", "true", "yes", "on"):
         return
@@ -150,10 +74,7 @@ def _install_sbd_stubs() -> None:
     log.debug("stanza absent; installed a functional regex-based stand-in")
 
 
-# Strings that no translator should be handed: part numbers, dates, figure
-# labels, measurements. "KW07" is a calendar-week label, and asking a
-# German->Persian model to translate it wastes a pass and invites a
-# hallucinated word where the original was already correct.
+# skip part numbers, dates, labels, measurements (e.g. "KW07")
 _NOT_WORDS = re.compile(r"^[\W\d_]*$|^[A-Z]{1,4}[\d.\-/]+[A-Za-z]*$")
 
 
@@ -173,12 +94,7 @@ class Translator(ABC):
 
     @abstractmethod
     def translate(self, texts: list[str], source: str, target: str) -> list[str]:
-        """Translate a batch. Must return exactly ``len(texts)`` items.
-
-        Batch rather than single-string because every backend that could ever
-        sit here -- local model, cloud API -- is dramatically cheaper batched,
-        and because a failure should degrade one image, not one word.
-        """
+        """Translate a batch."""
 
     def close(self) -> None:
         pass
@@ -200,12 +116,7 @@ class ArgosTranslator(Translator):
         return {(p.from_code, p.to_code) for p in package.get_installed_packages()}
 
     def ensure_packages(self, source: str, target: str) -> bool:
-        """Install what is needed for ``source -> target``, pivoting if required.
-
-        Returns False rather than raising when the download is impossible --
-        an offline machine with no pack should tell the user plainly, not
-        crash halfway through a folder of photos.
-        """
+        """Install what is needed for ``source -> target``, pivoting if required."""
         if source == target:
             return True
         if (source, target) in self._ready:
@@ -266,11 +177,7 @@ class ArgosTranslator(Translator):
 
     @staticmethod
     def chain_for(source: str, target: str) -> list | None:
-        """Translation objects to apply in order, or None if there is no route.
-
-        Explicit rather than delegating to ``translate.translate()``, which
-        assumes a composite always exists and raises AttributeError on None.
-        """
+        """Translation objects to apply in order, or None if there is no route."""
         _install_sbd_stubs()
         import argostranslate.translate as translate_mod
 
@@ -307,12 +214,7 @@ class ArgosTranslator(Translator):
 
     @staticmethod
     def detect_language(text: str, fallback: str = "en") -> str:
-        """Best-effort source language guess.
-
-        Tries langdetect if present. Its failure mode on short strings is to
-        raise, which is why the whole thing is wrapped -- OCR output is full
-        of two-word fragments.
-        """
+        """Best-effort source language guess."""
         sample = (text or "").strip()
         if len(sample) < 8:
             return fallback

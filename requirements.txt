@@ -19,6 +19,6 @@ langdetect>=1.0.9
 # Packaging (not needed to run).
 # pyinstaller>=6.0
 
-# OCR, optional GPU tier -- several GB, NVIDIA only. Install deliberately:
+# OCR, optional GPU tier -- several GB, NVIDIA only. Install manually:
 #   pip install torch --index-url https://download.pytorch.org/whl/cu121
 #   pip install transformers accelerate

@@ -1,36 +1,5 @@
 #!/usr/bin/env python3
-"""Build the portable folder and the .exe from this source tree.
-
-    python build_portable.py              # portable folder + onefile exe
-    python build_portable.py --onedir     # portable folder only (starts faster)
-    python build_portable.py --onefile    # single exe only
-    python build_portable.py --check      # report what would be bundled, build nothing
-
-Two artefacts, one source tree:
-
-* ``dist/PhotoTranslator/`` -- a portable folder with the interpreter and every
-  dependency vendored. Copy it to a USB stick and it runs.
-* ``dist/PhotoTranslator.exe`` -- one file. Unpacks to a temp dir on each
-  launch, so it starts a few seconds slower, but it is a single thing to hand
-  someone.
-
-Either way, on first run the app creates ``input/`` and ``output/`` **next to
-itself** and prints where they are.
-
-Three things PyInstaller gets wrong here without help, each of which produces a
-build that runs on this machine and fails on the user's:
-
-1. **RapidOCR's ONNX models** are loaded by path at runtime, so the dependency
-   analyser never sees them and the exe ships without the ~15 MB it needs.
-2. **Pillow's Raqm/HarfBuzz DLLs** are not Python imports. Losing them silently
-   downgrades Persian and Arabic to the reshaper fallback -- no error, just
-   worse text -- which is why :func:`check_raqm` fails the build loudly instead.
-3. **CTranslate2's native libraries** back Argos Translate and are likewise
-   invisible to static analysis.
-4. **The web UI's HTML** lives in ``pt/static/`` and is read from disk at
-   request time. Miss it and the exe runs, binds its port, and serves a 404
-   for its own front page.
-"""
+"""Build the portable folder and the .exe from this source tree."""
 
 from __future__ import annotations
 
@@ -47,8 +16,7 @@ ROOT = Path(__file__).resolve().parent
 NAME = "PhotoTranslator"
 ENTRY = ROOT / "PhotoTranslator.py"
 
-# Packages whose data files must be collected wholesale. The comment on each
-# is the failure you get when it is missing.
+# packages that need their data files collected (comment = error without it)
 COLLECT_ALL = [
     "rapidocr_onnxruntime",  # models are loaded by path -> "model file not found"
     "argostranslate",        # package metadata -> "no translation available"
@@ -64,21 +32,12 @@ HIDDEN_IMPORTS = [
     "minisbd",          # the sentence splitter that replaces stanza
 ]
 
-# Big, optional, and not on the default path.
-#
-# Measured on a Linux build of this tree: excluding these took the portable
-# folder from 887 MB to 679 MB, almost all of it spacy/blis/thinc. Windows
-# builds come out substantially smaller because the opencv and ctranslate2
-# native libraries are far smaller there -- expect roughly 250-400 MB for the
-# folder and less for the compressed onefile exe. What remains is genuinely
-# required: opencv (RapidOCR depends on it) and ctranslate2 (Argos runs on it).
+# big optional deps, excluded from the build (~200 MB saved)
 EXCLUDES = [
-    # The Unlimited-OCR tier. Opt-in, installed separately on a GPU machine.
+    # GPU OCR tier, installed separately
     "torch", "transformers", "accelerate",
 
-    # Argos pulls these in for sentence splitting. stanza needs torch, and
-    # spacy costs ~150 MB with blis/thinc; pt.translate installs a stanza stub
-    # so Argos falls back to MiniSBD, which is pure Python and adequate here.
+    # Argos sentence splitting deps (stanza/spacy); stubbed, MiniSBD is used instead
     "stanza", "spacy", "blis", "thinc", "cupy", "spacy_legacy", "spacy_loggers",
     "weasel", "srsly", "catalogue", "confection", "preshed", "cymem", "murmurhash",
 
@@ -121,12 +80,7 @@ def check_deps() -> list[str]:
 
 
 def check_raqm() -> bool:
-    """Warn loudly if Pillow cannot shape complex scripts.
-
-    A build without Raqm still produces correct Latin output, so this would
-    otherwise go unnoticed until a Persian user reports "the letters are
-    separate" -- weeks later, with no error to point at.
-    """
+    """Warn loudly if Pillow cannot shape complex scripts."""
     try:
         from PIL import features
         ok = bool(features.check("raqm"))
@@ -148,12 +102,7 @@ def bundled_fonts() -> list[Path]:
 
 
 def check_fonts() -> None:
-    """A build with no Arabic-capable font cannot produce Persian output.
-
-    On Windows the app will find arial.ttf at runtime, so this is a warning,
-    not an error -- but a portable folder handed to a stranger should carry
-    its own font rather than hoping.
-    """
+    """A build with no Arabic-capable font cannot produce Persian output."""
     fonts = bundled_fonts()
     if not fonts:
         print("  note: fonts/ is empty. The app will use system fonts at runtime.")

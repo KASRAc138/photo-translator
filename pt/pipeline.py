@@ -1,8 +1,4 @@
-"""The pipeline: folder in, translated folder out.
-
-Order is load -> detect -> translate -> render -> save, and the loaded image
-object is threaded through all of it. No stage re-opens the file.
-"""
+"""The pipeline: folder in, translated folder out."""
 
 from __future__ import annotations
 

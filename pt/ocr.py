@@ -1,28 +1,4 @@
-"""Two-tier OCR behind one interface.
-
-The tension, stated plainly: you want an .exe a normal person can run, and you
-want Unlimited-OCR in it. Unlimited-OCR is a CUDA-only bfloat16 vision-language
-model with multi-GB weights. It cannot ship inside a portable executable for
-people who have no NVIDIA card -- the weights alone dwarf the rest of the app.
-
-So there are two tiers behind one interface:
-
-===========  ==========================  ==========  =========  ==================
-tier         engine                      runs on     models     when
-===========  ==========================  ==========  =========  ==================
-default      RapidOCR (ONNX PP-OCR)      any CPU     ~15 MB     ships in the .exe
-optional     Unlimited-OCR               NVIDIA GPU  several GB auto-detected
-===========  ==========================  ==========  =========  ==================
-
-The app is honest out of the box and gets better on a machine that can afford
-it. It never silently downloads gigabytes: if a GPU is found it says so and
-uses the better engine only when the weights are already present or the user
-asked for them explicitly with ``PT_OCR=unlimited``.
-
-Every engine returns ``list[TextBox]`` in **upright image coordinates**, taking
-a ``LoadedImage`` -- never a path. Engines cannot open files. That is what
-keeps the second load path from growing back.
-"""
+"""Two-tier OCR behind one interface."""
 
 from __future__ import annotations
 
@@ -59,12 +35,7 @@ class OcrEngine(ABC):
 
 
 class RapidOcrEngine(OcrEngine):
-    """ONNXRuntime port of PP-OCR. No GPU, no download at runtime.
-
-    Models ride along inside the wheel, so a frozen build needs them collected
-    as data files -- see ``build_portable.py``, which does that explicitly
-    because PyInstaller's dependency analysis cannot see data loaded by path.
-    """
+    """ONNXRuntime port of PP-OCR."""
 
     name = "rapidocr"
 
@@ -103,10 +74,7 @@ class RapidOcrEngine(OcrEngine):
 
     def detect(self, image: LoadedImage) -> list[TextBox]:
         engine = self._load()
-        # BGR ndarray derived from the one canonical decode. Note we never
-        # hand the engine ``image.path`` -- if it opened the file itself it
-        # would apply its own EXIF policy and we would be back to two paths
-        # disagreeing.
+        # pass pixels, not the path, so EXIF handling stays in one place
         result = engine(image.bgr)
 
         # RapidOCR's return shape has moved between versions: older builds
@@ -151,12 +119,7 @@ class RapidOcrEngine(OcrEngine):
 
 
 def cuda_available() -> bool:
-    """True when a usable NVIDIA device is present.
-
-    Wrapped because importing torch on a machine without it is a 2-second
-    failure we do not want on the default path, and because torch raises
-    rather than returning False on some broken driver installs.
-    """
+    """True when a usable NVIDIA device is present."""
     try:
         import torch
         return bool(torch.cuda.is_available() and torch.cuda.device_count() > 0)
@@ -165,18 +128,7 @@ def cuda_available() -> bool:
 
 
 class UnlimitedOcrEngine(OcrEngine):
-    """Adapter for the CUDA vision-language OCR model.
-
-    Deliberately mirrors the shape of ``ocr_engine.py`` in Design Process OS:
-    lazy load, disk cache, and it never raises into the caller -- a failure
-    here degrades to the RapidOCR tier rather than killing the run.
-
-    **Not executed in this build.** The container that wrote this had no CUDA.
-    Structure, gating and degradation are verified; inference is not. The
-    function to look at first if your model build differs is
-    :meth:`_boxes_from_output`, which tolerates both the "returns decoded
-    string" and "writes files" conventions.
-    """
+    """Adapter for the CUDA vision-language OCR model."""
 
     name = "unlimited"
 
@@ -231,13 +183,7 @@ class UnlimitedOcrEngine(OcrEngine):
         ).eval().cuda()
 
     def _boxes_from_output(self, output, image: LoadedImage) -> list[TextBox]:
-        """Normalise whatever the model returned into TextBoxes.
-
-        Builds differ: some return a decoded string, some a list of dicts with
-        polygons, some only write files. Handle the useful cases and fall back
-        to one page-sized box, which still produces a correct translation --
-        just typeset as a block rather than per-line.
-        """
+        """Normalise whatever the model returned into TextBoxes."""
         if output is None:
             return []
         if isinstance(output, (list, tuple)) and output and isinstance(output[0], dict):
@@ -283,7 +229,7 @@ class UnlimitedOcrEngine(OcrEngine):
 
 
 def get_engine(cfg: Config | None = None) -> OcrEngine:
-    """Pick an engine per config, with an honest message about which and why."""
+    """Pick an engine per config, and report which one is used."""
     cfg = cfg or Config()
     choice = (cfg.ocr_engine or "auto").lower()
 

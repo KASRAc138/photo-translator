@@ -1,37 +1,4 @@
-"""Per-box text orientation.
-
-The detector finds *where* text is; it does not reliably say *which way up* it
-reads. On a page with a rotated figure caption, RapidOCR returns a tall, narrow
-quad with ``angle == 0.0`` and the correct string -- the geometry says
-"horizontal text in a 60px-wide box", which is nonsense, and typesetting a
-translation into it crushes the text into a sliver.
-
-That is the vertical-text bug, and it cannot be fixed with a single global
-angle: one page routinely carries body text at 0 degrees, a spine label at 90,
-and a stamp at some arbitrary skew. Orientation has to be decided per box.
-
-The probe is empirical. Warp the quad to an upright rectangle, rotate that crop
-to each plausible reading angle, and ask the recogniser to read each one. The
-confidence separation is stark -- measured on a rotated caption:
-
-===========  =====================  ============
-rotation     text returned          confidence
-===========  =====================  ============
-0            ``Quelle Archiv``      0.88
-90           ``""``                 0.00
-270          ``""``                 0.00
-180          ``" alla"``            0.34
-===========  =====================  ============
-
-A wrong orientation does not merely score lower, it usually returns nothing at
-all. So ``argmax`` over confidence is a sound decision rule, and the recogniser
-we are already paying for does the work -- no extra model.
-
-The cost is one recognition pass per candidate, so candidates are chosen by the
-crop's aspect ratio rather than tried exhaustively: a wide crop is almost never
-vertical, and probing it anyway would double the runtime of a typical page for
-nothing.
-"""
+"""Per-box text orientation."""
 
 from __future__ import annotations
 
@@ -54,13 +21,7 @@ RECHECK_CONFIDENCE = 0.55
 
 
 def warp_quad(image_bgr: np.ndarray, box: TextBox, pad: float = 2.0) -> np.ndarray | None:
-    """Perspective-warp ``box``'s quad to an upright rectangle.
-
-    Perspective rather than a plain crop-and-rotate because a photographed page
-    has genuine keystone distortion: the quad is a trapezium, and warping it
-    corrects that in the same operation that straightens it. An axis-aligned
-    crop of a rotated quad would also pull in neighbouring text.
-    """
+    """Perspective-warp ``box``'s quad to an upright rectangle."""
     import cv2
 
     quad = box.expanded(pad)
@@ -97,11 +58,7 @@ def _rotate(crop: np.ndarray, degrees: int) -> np.ndarray:
 
 
 def candidates_for(crop: np.ndarray, confidence: float) -> list[int]:
-    """Which reading rotations are worth paying for on this crop.
-
-    Returns counter-clockwise degrees. 0 is always included so the probe can
-    conclude "the detector was right" and cost nothing but one pass.
-    """
+    """Which reading rotations are worth paying for on this crop."""
     height, width = crop.shape[:2]
     if height >= width * VERTICAL_ASPECT:
         # Tall and narrow: a vertical run. Which way it reads is genuinely
@@ -132,16 +89,7 @@ def recognise(engine, crop: np.ndarray) -> tuple[str, float]:
 
 
 def resolve(engine, image_bgr: np.ndarray, box: TextBox) -> TextBox:
-    """Decide ``box``'s reading rotation and refine its text.
-
-    Mutates and returns ``box`` with ``box.orientation`` set to the
-    counter-clockwise rotation, in degrees, that makes the warped crop read
-    correctly -- and with ``box.text`` replaced when a rotated pass read it
-    better than the detector's own attempt.
-
-    Never raises. An unreadable crop keeps the detector's original answer at
-    orientation 0, which is the status quo rather than a regression.
-    """
+    """Decide ``box``'s reading rotation and refine its text."""
     crop = warp_quad(image_bgr, box)
     if crop is None or crop.size == 0:
         box.orientation = 0
@@ -155,12 +103,8 @@ def resolve(engine, image_bgr: np.ndarray, box: TextBox) -> TextBox:
     # Score every candidate with the SAME recogniser on the SAME crop, and
     # compare only those scores against each other.
     #
-    # The detector's own confidence must not be used as the baseline. RapidOCR
-    # rotates internally before reading, so a vertical caption comes back with
-    # the right text at 0.99 confidence attached to a quad whose geometry says
-    # "horizontal". Seeding the comparison with that 0.99 makes it unbeatable,
-    # and the probe silently concludes every box is upright -- which is exactly
-    # the bug this module exists to fix.
+    # don't use the detector's confidence as baseline: RapidOCR rotates
+    # internally, so it reports ~0.99 even for sideways boxes
     scores: list[tuple[float, int, str]] = []
     for rotation in options:
         text, conf = recognise(engine, _rotate(crop, rotation))

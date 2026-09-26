@@ -1,23 +1,4 @@
-"""Local web UI.
-
-Served from Python's standard library rather than FastAPI or Flask. The API
-surface here is six endpoints; a web framework would add ~15 MB to the exe and
-a dependency tree (starlette, pydantic-core, anyio) to save perhaps eighty
-lines. For a tool whose whole premise is "a normal person can run this", that
-trade is the wrong way round.
-
-The UI is deliberately automatic: open it, drop photos, pick a target language,
-press one button. The per-box controls exist for the case the automation cannot
-solve on its own -- OCR occasionally merges two words or reads a smudge as
-text, and being able to correct that string beats re-running the whole page and
-hoping.
-
-Threading note: ``ThreadingHTTPServer`` handles requests concurrently, but the
-OCR and translation engines are not thread-safe and are expensive to construct.
-A single worker thread owns them and a lock serialises access, so the browser
-stays responsive (progress polls return immediately) while the actual work
-remains sequential.
-"""
+"""Local web UI."""
 
 from __future__ import annotations
 
@@ -58,13 +39,7 @@ LANGUAGES = [
 
 @dataclass
 class PageState:
-    """Everything known about one image, cached between requests.
-
-    Boxes are kept server-side so the browser can send back a single edited
-    string rather than the whole geometry, and so re-rendering after an edit
-    skips OCR entirely -- which is the difference between instant and eight
-    seconds.
-    """
+    """Everything known about one image, cached between requests."""
 
     path: Path
     boxes: list[TextBox] = field(default_factory=list)

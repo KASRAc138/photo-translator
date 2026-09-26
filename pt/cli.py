@@ -1,10 +1,4 @@
-"""Command line / double-click entry point.
-
-Designed so that running the .exe with no arguments does the obvious thing:
-create ``input/`` and ``output/`` next to itself, say where they are, translate
-whatever is in ``input/``, and wait for a keypress so the window does not
-vanish before the user can read it.
-"""
+"""Command line / double-click entry point."""
 
 from __future__ import annotations
 
@@ -92,13 +86,7 @@ def apply_args(cfg: Config, args: argparse.Namespace) -> Config:
 
 
 def doctor(cfg: Config) -> int:
-    """Report the state of everything that can silently degrade.
-
-    Each of these has a failure mode that produces wrong output rather than an
-    error: no Raqm reshapes differently, a font without Arabic glyphs draws
-    empty boxes, a missing language pack passes the source text straight
-    through. Worth being able to check in one command.
-    """
+    """Report the state of everything that can silently degrade."""
     ok = True
     print("  Photo Translator -- self check\n")
 
@@ -112,7 +100,7 @@ def doctor(cfg: Config) -> int:
         from PIL import Image, features
         raqm = bool(features.check("raqm"))
         print(f"  pillow      {Image.__version__}   raqm/harfbuzz: "
-              + ("yes" if raqm else "no -- using the arabic-reshaper path (verified equivalent)"))
+              + ("yes" if raqm else "no -- using the arabic-reshaper path"))
     except Exception as exc:
         print(f"  pillow      MISSING ({exc})"); ok = False
 
@@ -179,9 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Ready." if ok else "Could not install the language pack -- see the messages above.")
         return 0 if ok else 1
 
-    # The UI is the default: someone who double-clicks the exe wants a window,
-    # not a folder convention they have to be told about. --batch keeps the
-    # scriptable path for automation and for the KB integration.
+    # UI by default; --batch for scripting
     if not args.batch and not args.images:
         from .webui import serve
         serve(cfg, port=args.port, open_browser=not args.no_browser)

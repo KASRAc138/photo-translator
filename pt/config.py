@@ -1,9 +1,4 @@
-"""Configuration: env vars, paths, and where things cache.
-
-Every knob has a working default. The app must run with zero configuration on
-a machine that has never seen it, because that is the whole point of shipping
-an .exe.
-"""
+"""Configuration: env vars, paths, and where things cache."""
 
 from __future__ import annotations
 
@@ -14,33 +9,14 @@ from pathlib import Path
 
 
 def app_dir() -> Path:
-    """Directory the app lives in -- next to the .exe when frozen.
-
-    PyInstaller unpacks a one-file build into a temp dir and points
-    ``__file__`` there, so ``sys.executable`` is the only thing that tells you
-    where the user actually put the program. ``input/`` and ``output/`` must
-    appear next to the exe the user double-clicked, not inside a temp dir that
-    is deleted on exit.
-    """
+    """Directory the app lives in -- next to the .exe when frozen."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
 
 
 def resource_dir(name: str) -> Path | None:
-    """Locate a bundled data folder, frozen or not.
-
-    PyInstaller unpacks ``--add-data`` payloads into ``sys._MEIPASS``, which is
-    a temp directory, *not* where ``sys.executable`` lives. ``app_dir()``
-    deliberately points at the exe so ``input/`` and ``output/`` land next to
-    it -- which means bundled resources need a different lookup entirely.
-
-    Getting this wrong is quiet: the fonts ship inside the exe, are never
-    found, and font selection silently falls back to whatever the host has.
-    On a Linux test build that meant a Japanese font was chosen for Latin
-    text; on a machine with no Arabic font it would mean Persian could not be
-    rendered at all despite Vazirmatn being right there in the archive.
-    """
+    """Locate a bundled data folder, frozen or not."""
     meipass = getattr(sys, "_MEIPASS", None)
     candidates = []
     if meipass:
