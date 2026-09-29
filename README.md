@@ -2,6 +2,8 @@
 
 Translates the text inside photos and scans and puts the translation back in the same place, at the same angle and roughly the same ink color. Works offline after the first language pack download.
 
+![Photo Translator](docs/screenshot.png)
+
 ![](docs/ui.png)
 
 ## Run

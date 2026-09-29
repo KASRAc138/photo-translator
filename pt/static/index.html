@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photo Translator</title>
+<!--
+  Everything is inline and self-contained: no CDN, no web fonts, no external
+  requests. The app has to work on a machine with no internet once the language
+  pack is cached, and a stylesheet that silently fails to load would make it
+  look broken rather than offline.
+-->
+<style>
+:root{
+  --bg:#0f1115; --panel:#161920; --panel-2:#1c2029; --line:#272c37;
+  --text:#e6e8ee; --muted:#8d94a6; --accent:#ff9d4d; --accent-dim:#c9782f;
+  --good:#4ec98a; --bad:#f0625d; --radius:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text); height:100vh; overflow:hidden;
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  display:flex; flex-direction:column;
+}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:none;background:none}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2c3240;border-radius:6px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---- header ---- */
+header{
+  display:flex;align-items:center;gap:18px;padding:14px 20px;
+  border-bottom:1px solid var(--line);background:var(--panel);flex:none;
+}
+.brand{display:flex;align-items:center;gap:11px;font-weight:650;letter-spacing:-.01em}
+.brand .mark{
+  width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+  background:linear-gradient(145deg,var(--accent),#e0553a);
+  color:#1a1005;font-weight:800;font-size:15px;
+}
+.spacer{flex:1}
+.field{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:13px}
+select{
+  background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+  padding:7px 10px;min-width:120px;
+}
+select:focus{outline:2px solid var(--accent-dim);outline-offset:1px}
+.btn{
+  padding:9px 16px;border-radius:9px;background:var(--panel-2);
+  border:1px solid var(--line);font-weight:550;transition:.15s;
+}
+.btn:hover:not(:disabled){background:#232936;border-color:#39404f}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.primary{
+  background:linear-gradient(145deg,var(--accent),#ef7f3c);color:#1a1005;
+  border:none;font-weight:700;
+}
+.btn.primary:hover:not(:disabled){filter:brightness(1.08)}
+
+/* ---- layout ---- */
+main{flex:1;display:grid;grid-template-columns:236px 1fr 310px;min-height:0}
+.col{display:flex;flex-direction:column;min-height:0;min-width:0}
+.col.left{border-right:1px solid var(--line);background:var(--panel)}
+.col.right{border-left:1px solid var(--line);background:var(--panel)}
+.col-head{
+  padding:12px 15px;font-size:11px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:8px;flex:none;
+}
+.col-body{flex:1;overflow:auto;padding:9px}
+
+/* ---- drop zone ---- */
+#drop{
+  margin:9px;padding:22px 14px;border:1.5px dashed #333a49;border-radius:var(--radius);
+  text-align:center;color:var(--muted);font-size:13px;transition:.15s;cursor:pointer;flex:none;
+}
+#drop:hover,#drop.over{border-color:var(--accent);background:#1b1a17;color:var(--text)}
+#drop b{color:var(--accent);font-weight:600}
+
+/* ---- file list ---- */
+.file{
+  display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:9px;
+  cursor:pointer;transition:.12s;margin-bottom:3px;
+}
+.file:hover{background:var(--panel-2)}
+.file.sel{background:#2a2118;box-shadow:inset 0 0 0 1px var(--accent-dim)}
+.file .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.dot{width:7px;height:7px;border-radius:50%;background:#3b4250;flex:none}
+.dot.done{background:var(--good)} .dot.err{background:var(--bad)}
+.count{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* ---- viewer ---- */
+.viewer{flex:1;position:relative;overflow:hidden;background:
+  repeating-conic-gradient(#15181e 0 25%,#12151a 0 50%) 50%/22px 22px;}
+.stage{position:absolute;inset:0;display:grid;place-items:center;padding:22px}
+.wrap{position:relative;max-width:100%;max-height:100%;box-shadow:0 12px 40px #0008}
+.wrap img{display:block;max-width:100%;max-height:calc(100vh - 210px);object-fit:contain}
+#after{position:absolute;inset:0;width:100%;height:100%}
+#overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#overlay polygon{fill:transparent;stroke:var(--accent);stroke-width:2;
+  vector-effect:non-scaling-stroke;pointer-events:all;cursor:pointer;opacity:.55}
+#overlay polygon:hover{opacity:1;fill:#ff9d4d22}
+#overlay polygon.sel{opacity:1;stroke:#fff;fill:#ffffff22}
+#overlay polygon.off{stroke:var(--bad);stroke-dasharray:5 4}
+.empty{color:var(--muted);text-align:center;max-width:340px}
+.empty h2{font-size:17px;margin-bottom:7px;color:var(--text);font-weight:600}
+
+/* ---- viewer toolbar ---- */
+.toolbar{
+  flex:none;display:flex;align-items:center;gap:14px;padding:10px 16px;
+  border-top:1px solid var(--line);background:var(--panel);
+}
+.seg{display:flex;background:var(--panel-2);border-radius:8px;padding:2px;border:1px solid var(--line)}
+.seg button{padding:6px 13px;border-radius:6px;font-size:13px;color:var(--muted)}
+.seg button.on{background:#31384a;color:var(--text)}
+input[type=range]{accent-color:var(--accent);width:150px}
+.hint{color:var(--muted);font-size:12px}
+
+/* ---- progress ---- */
+#bar{height:2px;background:var(--line);flex:none;overflow:hidden}
+#bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+
+/* ---- box list ---- */
+.box{
+  border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:7px;
+  background:var(--panel-2);cursor:pointer;transition:.12s;
+}
+.box:hover{border-color:#39404f}
+.box.sel{border-color:var(--accent);background:#241c14}
+.box.off{opacity:.45}
+.box .src{color:var(--muted);font-size:12px;margin-bottom:5px;word-break:break-word}
+.box textarea{
+  width:100%;background:#11141a;border:1px solid var(--line);border-radius:7px;
+  padding:6px 8px;resize:vertical;min-height:34px;font-size:13px;
+}
+.box textarea:focus{outline:none;border-color:var(--accent-dim)}
+.box .row{display:flex;align-items:center;gap:6px;margin-top:6px}
+.tag{
+  font-size:10px;padding:2px 6px;border-radius:5px;background:#2c3240;
+  color:var(--muted);font-weight:600;letter-spacing:.03em;
+}
+.tag.rot{background:#3a2a16;color:var(--accent)}
+.mini{padding:4px 8px;font-size:11px;border-radius:6px;background:#2c3240;color:var(--muted)}
+.mini:hover{background:#39404f;color:var(--text)}
+.rtl{direction:rtl;text-align:right}
+
+#toast{
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);
+  background:#252b38;border:1px solid var(--line);padding:11px 18px;border-radius:10px;
+  box-shadow:0 10px 30px #0009;transition:.25s;opacity:0;pointer-events:none;z-index:9;
+}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><span class="mark">PT</span> Photo Translator</div>
+  <div class="field">Translate to
+    <select id="target"></select>
+  </div>
+  <div class="field">Erase
+    <select id="erase">
+      <option value="inpaint">Inpaint</option>
+      <option value="fill">Flat fill</option>
+      <option value="none">Don't erase</option>
+    </select>
+  </div>
+  <div class="spacer"></div>
+  <span class="hint" id="status"></span>
+  <button class="btn" id="save" disabled>Save to output</button>
+  <button class="btn primary" id="run" disabled>Translate all</button>
+</header>
+<div id="bar"><i></i></div>
+
+<main>
+  <section class="col left">
+    <div class="col-head">Photos <span class="spacer"></span><span class="count" id="fcount"></span></div>
+    <div id="drop">Drop photos here<br><b>or click to browse</b></div>
+    <input type="file" id="picker" multiple accept="image/*" hidden>
+    <div class="col-body" id="files"></div>
+  </section>
+
+  <section class="col">
+    <div class="viewer">
+      <div class="stage" id="stage">
+        <div class="empty">
+          <h2>No photos yet</h2>
+          Drop images on the left, choose a language, and press Translate all.
+          Text is detected, translated, and typeset back in place — including
+          rotated and vertical captions.
+        </div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <div class="seg">
+        <button data-view="after" class="on">Result</button>
+        <button data-view="before">Original</button>
+        <button data-view="split">Compare</button>
+      </div>
+      <input type="range" id="slider" min="0" max="100" value="50" hidden>
+      <label class="hint"><input type="checkbox" id="showboxes" checked> Show boxes</label>
+      <div class="spacer" style="flex:1"></div>
+      <span class="hint" id="imginfo"></span>
+    </div>
+  </section>
+
+  <section class="col right">
+    <div class="col-head">Detected text <span class="spacer"></span><span class="count" id="bcount"></span></div>
+    <div class="col-body" id="boxes">
+      <div class="hint" style="padding:10px">Select a photo to see what was found.</div>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = async (path, opts) => (await fetch(path, opts)).json();
+
+let files = [], current = null, boxes = [], selected = -1, view = 'after', rtl = false;
+
+const RTL = new Set(['fa','ar','he','ur','ps','sd','ku','yi','dv']);
+
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+/* ---------- setup ---------- */
+async function init(){
+  const cfg = await api('/api/config');
+  const sel = $('#target');
+  sel.innerHTML = cfg.languages.map(l=>`<option value="${l.code}">${l.name}</option>`).join('');
+  sel.value = cfg.target; rtl = RTL.has(cfg.target);
+  $('#erase').value = cfg.erase;
+  sel.onchange = async () => {
+    rtl = RTL.has(sel.value);
+    await api('/api/settings',{method:'POST',body:JSON.stringify({target:sel.value})});
+    boxes = []; renderBoxes(); refresh();
+    toast('Language set to ' + sel.options[sel.selectedIndex].text);
+  };
+  $('#erase').onchange = async () => {
+    await api('/api/settings',{method:'POST',body:JSON.stringify({erase:$('#erase').value})});
+  };
+  await refresh();
+}
+
+/* ---------- files ---------- */
+async function refresh(){
+  const data = await api('/api/files');
+  files = data.files;
+  $('#fcount').textContent = files.length ? files.length + ' file' + (files.length>1?'s':'') : '';
+  $('#files').innerHTML = files.map(f=>`
+    <div class="file ${f.name===current?'sel':''}" data-n="${encodeURIComponent(f.name)}">
+      <span class="dot ${f.error?'err':(f.rendered?'done':'')}"></span>
+      <span class="nm" title="${f.name}">${f.name}</span>
+      ${f.boxes?`<span class="count">${f.boxes}</span>`:''}
+    </div>`).join('');
+  document.querySelectorAll('.file').forEach(el=>{
+    el.onclick = ()=>select(decodeURIComponent(el.dataset.n));
+  });
+  $('#run').disabled = !files.length;
+  $('#save').disabled = !files.some(f=>f.rendered);
+  if(!current && files.length) select(files[0].name);
+}
+
+async function upload(list){
+  for(const file of list){
+    await fetch('/api/upload',{method:'POST',headers:{'X-Filename':encodeURIComponent(file.name)},body:file});
+  }
+  await refresh();
+  toast(list.length + ' photo' + (list.length>1?'s':'') + ' added');
+}
+
+const drop = $('#drop');
+drop.onclick = ()=>$('#picker').click();
+$('#picker').onchange = e => upload([...e.target.files]);
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{
+  e.preventDefault(); drop.classList.add('over');
+}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{
+  e.preventDefault(); drop.classList.remove('over');
+}));
+drop.addEventListener('drop', e => upload([...e.dataTransfer.files].filter(f=>f.type.startsWith('image/'))));
+
+/* ---------- selection ---------- */
+async function select(name){
+  current = name; selected = -1;
+  document.querySelectorAll('.file').forEach(el=>
+    el.classList.toggle('sel', decodeURIComponent(el.dataset.n)===name));
+  const info = files.find(f=>f.name===name) || {};
+  drawStage(info.rendered);
+  const data = await api('/api/boxes?file='+encodeURIComponent(name));
+  boxes = data.boxes || [];
+  $('#imginfo').textContent = data.source ? 'detected: ' + data.source : '';
+  renderBoxes();
+  drawOverlay();
+}
+
+function drawStage(hasResult){
+  const src = '/api/image?file='+encodeURIComponent(current)+'&kind=';
+  const showAfter = hasResult && view!=='before';
+  $('#stage').innerHTML = `
+    <div class="wrap" id="wrap">
+      <img id="before" src="${src}original">
+      ${showAfter?`<img id="after" src="${src}result&t=${Date.now()}">`:''}
+      <svg id="overlay" preserveAspectRatio="none"></svg>
+    </div>`;
+  applyView();
+  const img = $('#before');
+  img.onload = drawOverlay;
+  if(img.complete) drawOverlay();
+}
+
+function applyView(){
+  const after = $('#after'); if(!after) return;
+  $('#slider').hidden = view!=='split';
+  if(view==='split'){
+    const p = $('#slider').value;
+    after.style.clipPath = `inset(0 0 0 ${p}%)`;
+    after.style.display='block';
+  } else if(view==='before'){
+    after.style.display='none';
+  } else {
+    after.style.clipPath='none'; after.style.display='block';
+  }
+}
+
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.seg button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); view = b.dataset.view;
+  const info = files.find(f=>f.name===current)||{};
+  drawStage(info.rendered);
+});
+$('#slider').oninput = applyView;
+$('#showboxes').onchange = drawOverlay;
+
+/* ---------- overlay ---------- */
+function drawOverlay(){
+  const svg = $('#overlay'), img = $('#before');
+  if(!svg || !img || !img.naturalWidth) return;
+  svg.setAttribute('viewBox', `0 0 ${img.naturalWidth} ${img.naturalHeight}`);
+  if(!$('#showboxes').checked){ svg.innerHTML=''; return; }
+  svg.innerHTML = boxes.map((b,i)=>
+    `<polygon points="${b.quad.map(p=>p.join(',')).join(' ')}"
+      class="${i===selected?'sel':''} ${b.disabled?'off':''}" data-i="${i}">
+      <title>${(b.text||'').replace(/[<>&"]/g,'')} → ${(b.translated||'').replace(/[<>&"]/g,'')}</title>
+    </polygon>`).join('');
+  svg.querySelectorAll('polygon').forEach(p=>p.onclick=()=>{
+    selectBox(+p.dataset.i);
+    const el = document.querySelector(`.box[data-i="${p.dataset.i}"]`);
+    if(el) el.scrollIntoView({block:'center',behavior:'smooth'});
+  });
+}
+
+/* ---------- box panel ---------- */
+function renderBoxes(){
+  $('#bcount').textContent = boxes.length ? boxes.length + ' found' : '';
+  if(!boxes.length){
+    $('#boxes').innerHTML = '<div class="hint" style="padding:10px">'+
+      (current ? 'Nothing analysed yet — press Translate all.' : 'Select a photo.')+'</div>';
+    return;
+  }
+  $('#boxes').innerHTML = boxes.map((b,i)=>`
+    <div class="box ${i===selected?'sel':''} ${b.disabled?'off':''}" data-i="${i}">
+      <div class="src">${escapeHtml(b.text)}</div>
+      <textarea data-i="${i}" class="${rtl?'rtl':''}" rows="1">${escapeHtml(b.translated)}</textarea>
+      <div class="row">
+        ${b.vertical?`<span class="tag rot">${b.orientation}° vertical</span>`:''}
+        <span class="tag">${Math.round(b.confidence*100)}%</span>
+        <span style="flex:1"></span>
+        <button class="mini" data-act="rot" data-i="${i}">Rotate</button>
+        <button class="mini" data-act="off" data-i="${i}">${b.disabled?'Include':'Skip'}</button>
+      </div>
+    </div>`).join('');
+
+  $('#boxes').querySelectorAll('.box').forEach(el=>{
+    el.onclick = e => { if(e.target.tagName!=='TEXTAREA') selectBox(+el.dataset.i); };
+  });
+  $('#boxes').querySelectorAll('textarea').forEach(t=>{
+    t.style.height = t.scrollHeight+'px';
+    t.oninput = ()=>{ t.style.height='auto'; t.style.height=t.scrollHeight+'px'; };
+    t.onchange = ()=>edit(+t.dataset.i, {translated:t.value});
+  });
+  $('#boxes').querySelectorAll('.mini').forEach(b=>{
+    b.onclick = e => {
+      e.stopPropagation();
+      const i = +b.dataset.i;
+      if(b.dataset.act==='off') edit(i,{disabled:!boxes[i].disabled});
+      else edit(i,{orientation:(boxes[i].orientation+90)%360});
+    };
+  });
+}
+
+function selectBox(i){ selected = i; renderBoxes(); drawOverlay(); }
+function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function edit(index, patch){
+  $('#status').textContent = 'updating…';
+  const res = await api('/api/edit',{method:'POST',
+    body:JSON.stringify({file:current,index,...patch})});
+  $('#status').textContent = '';
+  if(res.error) return toast(res.error);
+  boxes[index] = res.box;
+  const info = files.find(f=>f.name===current); if(info) info.rendered = true;
+  renderBoxes(); drawStage(true);
+}
+
+/* ---------- run ---------- */
+$('#run').onclick = async () => {
+  const res = await api('/api/run',{method:'POST',body:JSON.stringify({})});
+  if(res.error) return toast(res.error);
+  $('#run').disabled = true;
+  poll();
+};
+
+async function poll(){
+  const p = await api('/api/progress');
+  const pct = p.total ? Math.round(p.done/p.total*100) : 0;
+  $('#bar i').style.width = pct + '%';
+  $('#status').textContent = p.active
+    ? `${p.current} — ${p.message} (${p.done}/${p.total})` : '';
+  if(p.active){ setTimeout(poll, 400); return; }
+  $('#bar i').style.width = '0';
+  $('#run').disabled = false;
+  await refresh();
+  if(current) await select(current);
+  toast('Done');
+}
+
+$('#save').onclick = async () => {
+  const res = await api('/api/save',{method:'POST',body:JSON.stringify({})});
+  toast(res.written.length ? `Saved ${res.written.length} to output` : 'Nothing to save');
+};
+
+init();
+</script>
+</body>
+</html>
